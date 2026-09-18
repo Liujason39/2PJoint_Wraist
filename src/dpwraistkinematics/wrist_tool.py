@@ -13,14 +13,14 @@ Model: O at center of Universal Joint, R=Ry(beta)Rx(alpha)
 Cartesian Coordinate: Z --> to hand, X --> side of wraist, connector of p-joint is free to rotate
 ** FK use continum to deriviate, using q_(k-1) as seed with max_step_rad to prevent singularity 
 
-rho define as p-bar length; s = stroke = rho-rho_offset
+rho define as p-rod length; s = stroke = rho-rho_offset
 J=d(rho)/d(q); H[i,j,k]=d²rho_i/(dq_j dq_k)
 qdot as (alpha_dot, beta_dot), not omega_xyz; omega_xyz=E *qdot.
 tau is generalized and conjugate to q  ; +f toward hand
 In case ofdynamic for F--> a, M and bias=c+g+friction is needed
 rlo:= rho lower (bound)
 rhi:= rho upper (bound)
-rho:= \rho, the scalar of length of p-bar
+rho:= \rho, the scalar of length of p-rod
 """
 import argparse
 import json
@@ -73,7 +73,7 @@ class Wrist:
         return q
 
     def _rho(self, rho):
-        """check validity of bar's length"""
+        """check validity of rod's length"""
         rho = arr(rho,(2,),'rho')
         if np.any(rho <= 0) or np.any(rho < self.rlo) or np.any(rho > self.rhi):
             raise ValueError('length outside limits')
@@ -88,9 +88,9 @@ class Wrist:
         if np.any(rho < 1e-12):
             raise ValueError('zero-length actuator: direction undefined')
         u = d/rho[:,None]
-        p1 = np.einsum('jab,ib->ija',R1,self.b) #　dp_i/dq_j, i:which bar, j:to which angle, a:to which(x,y,z), b:from which(x,y,z)
-        p2 = np.einsum('jkab,ib->ijka',R2,self.b) #　ddp_i/(dq_j*dq_k), i:which bar, j:to which angle, k:to which angle, a:to which(x,y,z), b:from which(x,y,z)
-        J = np.einsum('ia,ija->ij',u,p1) # s_dot = J*q_dot, dp_i/dq_j, i:which bar, j:to which angle, a:to which(x,y,z)
+        p1 = np.einsum('jab,ib->ija',R1,self.b) #　dp_i/dq_j, i:which rod, j:to which angle, a:to which(x,y,z), b:from which(x,y,z)
+        p2 = np.einsum('jkab,ib->ijka',R2,self.b) #　ddp_i/(dq_j*dq_k), i:which rod, j:to which angle, k:to which angle, a:to which(x,y,z), b:from which(x,y,z)
+        J = np.einsum('ia,ija->ij',u,p1) # s_dot = J*q_dot, dp_i/dq_j, i:which rod, j:to which angle, a:to which(x,y,z)
         H = np.empty((2,2,2))
         for i in range(2):
             H[i] = p1[i]@(np.eye(3)-np.outer(u[i],u[i]))@p1[i].T/rho[i]
@@ -200,10 +200,11 @@ class Wrist:
 
 
 def example():
-    return Wrist(a=[[.04,.03,-.15],[-.04,.03,-.15]],
-                 b=[[.04,.03,0],[-.04,.03,0]],
+    """default as real wraist, a[0]: left rod, a[1]: right rod; b is vice versa"""
+    return Wrist(a=[[-.033,.00,-.2315],[.033,.00,-.2315]],
+                 b=[[-.0695/2,-0.02,0],[.0695/2,-0.02,0]],
                  q_min=np.deg2rad([-35,-35]),q_max=np.deg2rad([35,35]),
-                 q_home=[0,0],rho_min=[.08,.08],rho_max=[.22,.22],rho_offset=[.15,.15])
+                 q_home=[0.,0.],rho_min=[.18302,.18302],rho_max=[.28302,.28302],rho_offset=[0.23237,0.23237])
 
 
 class Verification(unittest.TestCase):
