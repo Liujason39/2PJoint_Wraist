@@ -1,26 +1,26 @@
 """Two-P-joint wrist tool (SI: m, rad, s, N, N*m).
 
-安裝: python -m pip install numpy scipy
-示範: python wrist_tool.py
-驗證: python wrist_tool.py --test
-自訂: python wrist_tool.py --config geometry.json
+demo: python wrist_tool.py
+evalaute: python wrist_tool.py --test
+usage in real case: python wrist_tool.py --config geometry.json
 
-JSON 欄位: a, b (各 2x3), q_min, q_max, q_home (各 2),
-rho_min, rho_max, rho_offset (各 2，可省略)。角度均 rad，長度均 m。
-例如 a=[[.04,.03,-.15],[-.04,.03,-.15]],
-b=[[.04,.03,0],[-.04,.03,0]]。範例尺寸不是使用者實機尺寸。
+JSON label: a, b (2x3), q_min, q_max, q_home (for each set),
+rho_min, rho_max, rho_offset (for each set) (rad, m)
+e.g. a=[[.04,.03,-.15],[-.04,.03,-.15]],
+b=[[.04,.03,0],[-.04,.03,0]]
 
-模型: 保留固定中心十字軸承，R=Ry(beta)Rx(alpha)。外軸 Y，內軸 X'。
-固定 Z 朝手掌，X 朝側面，Y=Z cross X。兩端接頭需允許空間擺動。
-只有單軸鉸鏈的支鏈可能有額外約束，本模型不包含碰撞/接頭擺角。
-FK 是由初值選分支的局部有界求解，不宣稱全域唯一；連續追蹤使用
-上一時刻 q 作 seed，並設定 max_step_rad。禁止以奇異處偽逆冒充精確逆。
+Model: O at center of Universal Joint, R=Ry(beta)Rx(alpha)
+Cartesian Coordinate: Z --> to hand, X --> side of wraist, connector of p-joint is free to rotate
+** FK use continum to deriviate, using q_(k-1) as seed with max_step_rad to prevent singularity 
 
-rho 是兩端中心總長度；stroke=rho-rho_offset。
-J=d(rho)/d(q); H[i,j,k]=d²rho_i/(dq_j dq_k)。
-qdot 不是三維角速度；omega=E qdot（固定座標系）。
-力矩 tau 是與 q 共軛的廣義力矩；正 f 沿基座往平台推。
-動力學介面要求使用者提供 M 及 bias=c+g+friction，不預設實機慣量。
+rho define as p-bar length; s = stroke = rho-rho_offset
+J=d(rho)/d(q); H[i,j,k]=d²rho_i/(dq_j dq_k)
+qdot as (alpha_dot, beta_dot), not omega_xyz; omega_xyz=E *qdot.
+tau is generalized and conjugate to q  ; +f toward hand
+In case ofdynamic for F--> a, M and bias=c+g+friction is needed
+rlo:= rho lower (bound)
+rhi:= rho upper (bound)
+rho:= \rho, the scalar of length of p-bar
 """
 import argparse
 import json
@@ -30,6 +30,7 @@ from scipy.optimize import least_squares
 
 
 def arr(x, shape, name):
+    """check and return a np array of "shape"""
     v = np.asarray(x, dtype=float)
     if v.shape != shape or not np.all(np.isfinite(v)):
         raise ValueError(f'{name}: expected finite shape {shape}')
@@ -37,7 +38,7 @@ def arr(x, shape, name):
 
 
 def rotations(q):
-    """R, first derivatives (2,3,3), second derivatives (2,2,3,3)."""
+    """return rotation matrix R R_dot R_ddot (d/dq), first derivatives (2,3,3), second derivatives (2,2,3,3)."""
     a, b = q
     ca, sa, cb, sb = np.cos(a), np.sin(a), np.cos(b), np.sin(b)
     X = np.array([[1,0,0],[0,ca,-sa],[0,sa,ca]])
@@ -65,12 +66,14 @@ class Wrist:
         self.ik(self.home)
 
     def _q(self, q):
+        """check and record s_0"""
         q = arr(q,(2,),'q')
         if np.any(q < self.lo-1e-12) or np.any(q > self.hi+1e-12):
             raise ValueError('angle outside limits')
         return q
 
     def _rho(self, rho):
+        """check validity of bar's length"""
         rho = arr(rho,(2,),'rho')
         if np.any(rho <= 0) or np.any(rho < self.rlo) or np.any(rho > self.rhi):
             raise ValueError('length outside limits')
@@ -85,9 +88,9 @@ class Wrist:
         if np.any(rho < 1e-12):
             raise ValueError('zero-length actuator: direction undefined')
         u = d/rho[:,None]
-        p1 = np.einsum('jab,ib->ija',R1,self.b)
-        p2 = np.einsum('jkab,ib->ijka',R2,self.b)
-        J = np.einsum('ia,ija->ij',u,p1)
+        p1 = np.einsum('jab,ib->ija',R1,self.b) #　dp_i/dq_j, i:which bar, j:to which angle, a:to which(x,y,z), b:from which(x,y,z)
+        p2 = np.einsum('jkab,ib->ijka',R2,self.b) #　ddp_i/(dq_j*dq_k), i:which bar, j:to which angle, k:to which angle, a:to which(x,y,z), b:from which(x,y,z)
+        J = np.einsum('ia,ija->ij',u,p1) # s_dot = J*q_dot, dp_i/dq_j, i:which bar, j:to which angle, a:to which(x,y,z)
         H = np.empty((2,2,2))
         for i in range(2):
             H[i] = p1[i]@(np.eye(3)-np.outer(u[i],u[i]))@p1[i].T/rho[i]
@@ -114,6 +117,7 @@ class Wrist:
         return {'singular_values':s, 'condition':float(s[0]/s[-1]) if s[-1]>0 else np.inf}
 
     def _regular_J(self, q):
+        """check if J^-1 available"""
         J = self.jacobian(q)
         s = np.linalg.svd(J,compute_uv=False)
         if s[-1] < 1e-10 or s[-1] < 1e-8*s[0]:
@@ -128,6 +132,7 @@ class Wrist:
             raise ValueError('tol_m must be positive')
         if max_step_rad is not None and (not np.isfinite(max_step_rad) or max_step_rad <= 0):
             raise ValueError('max_step_rad must be positive')
+        # we use continum to get the FK since the sol is non-unique
         fit = least_squares(lambda q:self.geometry(q)[0]-rho, seed,
                             jac=self.jacobian,bounds=(self.lo,self.hi),
                             ftol=1e-13,xtol=1e-13,gtol=1e-13,max_nfev=300)
