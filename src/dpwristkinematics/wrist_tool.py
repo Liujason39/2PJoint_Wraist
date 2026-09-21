@@ -10,7 +10,7 @@ e.g. a=[[.04,.03,-.15],[-.04,.03,-.15]],
 b=[[.04,.03,0],[-.04,.03,0]]
 
 Model: O at center of Universal Joint, R=Ry(beta)Rx(alpha)
-Cartesian Coordinate: Z --> to hand, X --> side of wraist, connector of p-joint is free to rotate
+Cartesian Coordinate: Z --> to hand, X --> side of wrist, connector of p-joint is free to rotate
 ** FK use continum to deriviate, using q_(k-1) as seed with max_step_rad to prevent singularity 
 
 rho define as p-rod length; s = stroke = rho-rho_offset
@@ -200,7 +200,7 @@ class Wrist:
 
 
 def example():
-    """default as real wraist, a[0]: left rod, a[1]: right rod; b is vice versa"""
+    """default as real wrist, a[0]: left rod, a[1]: right rod; b is vice versa"""
     return Wrist(a=[[-.033,.00,-.2315],[.033,.00,-.2315]],
                  b=[[-.0695/2,-0.02,0],[.0695/2,-0.02,0]],
                  q_min=np.deg2rad([-35,-35]),q_max=np.deg2rad([35,35]),

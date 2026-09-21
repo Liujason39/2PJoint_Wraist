@@ -1,5 +1,5 @@
 import numpy as np
-from src.dpwraistkinematics.wrist_tool import example
+from src.dpwristkinematics.wrist_tool import example
 
 np.set_printoptions(precision=6, suppress=True)
 
