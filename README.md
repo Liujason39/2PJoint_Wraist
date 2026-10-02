@@ -2,8 +2,6 @@
 
 `wrist_tool.py` 用於中央十字軸承加兩支直線致動器（P joint）的手腕機構，提供正逆運動學、解析 Jacobian 與 Hessian、速度及加速度轉換、力與力矩映射，以及由使用者提供參數的動力學計算介面。
 
-> 內建幾何尺寸僅供示範，並非實機量測值。本工具不包含硬體通訊或馬達驅動。
-
 ## 1. 安裝與快速執行
 
 需要 Python 3、NumPy、SciPy。將本 README 與 `wrist_tool.py` 放在同一資料夾。
@@ -27,6 +25,7 @@ python wrist_tool.py --config geometry.json
 
 `--config` 會在設定的 `q_home` 執行示範，輸出長度、Jacobian、Hessian、速度、加速度及力等資料。它不是任意軌跡的命令列求解器；一般計算請使用下方 Python API。
 
+使用範例請看 `demo.py`, 用json載入的版本 `demo2.py`
 ## 2. 模型、座標與單位
 
 ### 機構假設
@@ -206,22 +205,6 @@ net_force, moment_about_O = w.actuator_wrench(q, force)
 ```
 
 `q_torque` 是與 `[alpha, beta]` 共軛的兩個廣義力矩，不是固定座標系的 `[Mx, My]`。`actuator_wrench` 回傳兩個三維向量，表示致動器對平台施加的合力與繞 O 的力矩，不包含十字軸承反力及反力矩。
-
-### 動力學介面
-
-```python
-# 僅示範介面；以下 M 與 bias 並非此機構的辨識結果。
-M = np.array([[0.10, 0.01], [0.01, 0.20]])
-bias = np.array([0.2, 0.3])       # 科氏 + 離心 + 重力 + 摩擦，N*m
-external = np.array([0.1, 0.0])   # 外部廣義力矩，N*m
-
-force_required = w.inverse_dynamics(q, qddot, M, bias, external)
-qddot_result = w.forward_dynamics(q, force_required, M, bias, external)
-```
-
-使用者必須在當前 `q`、`qdot` 下計算 `M` 和 `bias`，並包含模型決定納入的負載與移動部件。工具不會從幾何自動推算它們，因此動力學函式沒有單獨的 `qdot` 參數。`M` 必須為對稱正定矩陣。
-
-輸出的 `force_required` 是直線致動器軸向力，不是螺桿馬達扭矩；螺桿導程、減速比、效率及馬達慣量未包含在工具中。
 
 ## 7. 計算公式
 
